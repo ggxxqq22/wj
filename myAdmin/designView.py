@@ -228,12 +228,19 @@ def getQuestionList(info,username):
                 temp['id']=item.id#问题id
                 temp['row']=item.row
                 temp['must']=item.must
+                temp['level']=item.level
                 #获取选项
                 temp['options']=[]
-                if temp['type'] in ['radio', 'checkbox']:  # 如果是单选或者多选
+                temp['npsValue']=[]
+                temp['rankValue']=[]#接收排序
+                if temp['type'] in ['radio', 'checkbox', 'nps', 'rank']:  # 如果是单选或者多选
                     optionItems = Options.objects.filter(questionId=item.id)
                     for optionItem in optionItems:
                         temp['options'].append({'title': optionItem.title, 'id': optionItem.id})
+                        if(temp['type'] == 'nps'):
+                            temp['npsValue'].append('')
+                        elif temp['type'] == 'rank':
+                            temp['rankValue'].append({'id': optionItem.id, 'title': optionItem.title})
                 temp['radioValue']=-1#接收单选框的值
                 temp['checkboxValue'] =[]#接收多选框的值
                 temp['textValue']=''#接收输入框的值
@@ -265,12 +272,20 @@ def addQuestion(info,username):
     q_title=info.get('title')#题目标题
     q_type=info.get('type')#题目类型
     options=info.get('options')#选项
+    level = info.get('level')
     row=info.get('row')
     must=info.get('must')
     questionId=info.get('questionId')#问题id 可为空
-    if wjId and q_title and q_type and must!=None:
-        if q_type in ['radio','checkbox','text']:
-            if questionId:#问题id存在 更新问题
+    # 判断量表等级是否填写正确
+    if q_type == 'nps' and len(level.split(',')) < 2:
+        response['code'] = '-3'
+        response['msg'] = '量表等级填写错误'
+    elif wjId and q_title and q_type and must!=None:
+        if q_type in ['radio','checkbox','text', 'page', 'rank']:
+            print('--------------')
+            print(info)
+            print('--------------')
+            if questionId:  # 问题id存在 更新问题
                 newIds=[]
                 for temp in options:
                     newIds.append(temp['id'])#将更新后的选项id记录
@@ -289,26 +304,60 @@ def addQuestion(info,username):
                         Options.objects.create(questionId=questionId,title=option['title'])
             else:#问题id不存在 添加问题
                 # 添加问题
-                resObj = Question.objects.create(wjId=wjId, title=q_title, type=q_type, row=row,must=must)
+                resObj = Question.objects.create(wjId=wjId, title=q_title, type=q_type, row=row, must=must)
                 questionId = resObj.id
                 response['id'] = questionId
                 # 添加选项
-                if q_type == 'radio' or q_type == 'checkbox':  # 单选或者多选
-                    print(type(options))
+                if q_type in ['radio','checkbox','rank']:  # 单选或者多选
+                    print('*********')
+                    print(options)
+                    print('*********')
                     if options and type(options) == type([]):
                         for item in options:
                             Options.objects.create(questionId=questionId, title=item['title'])
                             # Options(questionId=questionId,title=item)
                     else:  # 传入选项不能为空
                         response['code'] = '-4'
-                        response['msg'] = '操作失败'
+                        response['msg'] = '传入选项不能为空'
+        elif q_type == 'nps':
+            # 如果问题存在
+            if questionId:
+                # 新的选项id
+                newIds = []
+                for temp in options:
+                    newIds.append(temp['id'])  # 将更新后的选项id记录
+                allOptions = Options.objects.filter(questionId=questionId) # 以前存在的旧的选项id
+                # 遍历选项 把不在更新后的选项id中的选项删除
+                for option in allOptions:
+                    if option.id not in newIds:
+                        option.delete()
+                # 更新问题
+                Question.objects.filter(wjId=wjId, id=questionId).update(title=q_title, type=q_type, must=must, row=row, level=level)
+                # 更新选项
+                for option in options:
+                    if option['id'] != 0:  # 选项为已有的 更新
+                        Options.objects.filter(questionId=questionId, id=option['id']).update(title=option['title'])
+                    else:  # 选项为新增的 添加
+                        Options.objects.create(questionId=questionId, title=option['title'])
+            # 新添加问题
+            else:
+                resObj = Question.objects.create(wjId=wjId, title=q_title, type=q_type, row=row, must=must, level=level)
+                questionId = resObj.id
+                response['id'] = questionId
+                if options and type(options) == type([]):
+                    for item in options:
+                        Options.objects.create(questionId=questionId, title=item['title'])
+                        # Options(questionId=questionId,title=item)
+                else:  # 传入选项不能为空
+                    response['code'] = '-4'
+                    response['msg'] = '传入选项不能为空'
         else:
             response['code'] = '-5'
             response['msg'] = '传入参数值有误'
             return response
     else:
         response['code'] = '-3'
-        response['msg'] = '确少必要参数'
+        response['msg'] = '缺少必要参数'
     return response
 
 
@@ -488,7 +537,65 @@ def dataAnalysis(info):
                 questionId=question.id
                 if questionType == "radio" or questionType == "checkbox":
                     result = getQuestionAnalysis(question.id)
+                elif questionType == 'rank':
+                    answer = Answer.objects.filter(questionId=questionId)
+                    result = []
+                    if len(answer) == 0:
+                        optionRank = Options.objects.filter(questionId=questionId)
+                        for e in optionRank:
+                            result.append({
+                                'title': e.title,
+                                'rank': '暂无数据'
+                            })
+                    else:
+                        ids = answer[0].rankAnswer.split(',')
+                        rankCnt = {}
+                        for id in ids:
+                            rankCnt[id] = 0
+                        print(rankCnt)
+                        for ans in answer:
+                            if (ans.rankAnswer):
+                                for r, id in enumerate(ans.rankAnswer.split(',')):
+                                    rankCnt[id] += r+1
+                        for id in ids:
+                            rankCnt[id] = int(rankCnt[id] * 100 / len(answer)) / 100
+                        print(rankCnt)
+                        rank = {}
+                        optionRank = Options.objects.filter(questionId=questionId)
+                        for e in optionRank:
+                            rank[e.title] = rankCnt[str(e.id)]
+                        for element in rank:
+                            result.append({'title': element, 'rank': rank[element]})
+                        result.sort(key=lambda d: d['rank'])
                     print(result)
+                elif questionType == 'nps':
+                    answer = Answer.objects.filter(questionId=questionId)  # 获取问题id的答案
+                    thisQuestion = Question.objects.filter(id=questionId) # 量表qution对象
+                    thisOption = Options.objects.filter(questionId=thisQuestion[0].id) # 量表的所有问题
+                    result = []
+                    l = len(thisQuestion[0].level.split(','))
+                    # 现有npsAnswer
+                    # 最终option、count、percentage
+                    for index, ques in enumerate(thisOption):
+                        totalNum = 0
+                        result.append({
+                            'title': ques.title,
+                            'result': [{
+                                'count': 0,
+                                'option': thisQuestion[0].level.split(',')[i],
+                                'percent': ''
+                            } for i in range(l)]
+                        })
+                        for item in answer:
+                            if (item.npsAnswer):
+                                nowAns = int(item.npsAnswer[index])
+                                result[index]['result'][nowAns]['count'] += 1
+                                totalNum += 1
+                        for item in result[index]['result']:
+                            if(totalNum == 0):
+                                item['percent'] = '0%'
+                            else:
+                                item['percent'] = str(int((item['count']/totalNum)*10000)/100) + '%'
                 else:
                     # result = getQuestionText(question.id)
                     result=''
@@ -497,7 +604,8 @@ def dataAnalysis(info):
                     "title": questionTitle,
                     "type": questionType,
                     "result": result,
-                    "questionId":questionId
+                    "questionId":questionId,
+                    "cnt": question.cnt
                 })
             response['detail'] = detail
         else:

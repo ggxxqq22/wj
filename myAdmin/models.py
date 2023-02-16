@@ -32,6 +32,8 @@ class Question(models.Model):
     wjId=models.IntegerField(verbose_name='关联问卷id')
     row=models.IntegerField(verbose_name='行数',null=True)#如果为填空题 此字段为文本输入框的行数
     must=models.BooleanField(verbose_name='是否必填')#是否必填
+    level = models.CharField(max_length=100, verbose_name='级别表', default='无')
+    cnt = models.IntegerField(verbose_name='回答次数',null=True, default=0) #如果为填空题 此字段为文本输入框的行数
 
 #选项表
 class Options(models.Model):
@@ -53,6 +55,8 @@ class Answer(models.Model):
     type = models.CharField(max_length=20, verbose_name='题目类型')
     answer=models.IntegerField(verbose_name='答案',blank=True, null=True)
     answerText = models.TextField(verbose_name='文本答案', blank=True, null=True)
+    npsAnswer = models.TextField(verbose_name='量表答案', blank=True, null=True)
+    rankAnswer = models.TextField(verbose_name='排序答案', blank=True, null=True)
 
 
 

@@ -7,7 +7,9 @@ def analysisExportExcel(data,title='问卷统计'):
     tran_dict={
         'radio':'单选题',
         'checkbox':'多选题',
-        'text':'问答题'
+        'text':'问答题',
+        'nps': '矩阵量表题',
+        'rank': '排序题'
     }
     wb = xlwt.Workbook()
     ws = wb.add_sheet('数据统计')
@@ -17,6 +19,8 @@ def analysisExportExcel(data,title='问卷统计'):
     ws.write(i, j, title)
     i+=2
     for index,question in enumerate(data):
+        if question['type'] == 'page':
+            continue
         print(i, j, question['title'])
         # 题目
         ws.write(i, j, '%s.[%s]%s'%(index+1,tran_dict[question['type']],question['title']))
@@ -24,6 +28,27 @@ def analysisExportExcel(data,title='问卷统计'):
         if question['type']=='text':
             ws.write(i, j, '问答题请通过下载详情数据获取')
             i+=2
+            continue
+        elif question['type']=='rank':
+            rank = question['result']
+            for ind, r in enumerate(rank):
+                ws.write(i, j, str(ind+1) + '. ' + r['title'])
+                ws.write(i, j+1, '平均排名： ' + str(r['rank']))
+                i += 1
+            continue
+        elif question['type']=='nps':
+            for res in question['result']:
+                ws.write(i, j, res['title'])
+                i += 1
+                ws.write(i, j, '选项')
+                ws.write(i, j + 1, '数量')
+                ws.write(i, j + 2, '占比')
+                i += 1
+                for option in res['result']:
+                    ws.write(i, j, option['option'])
+                    ws.write(i, j + 1, option['count'])
+                    ws.write(i, j + 2, option['percent'])
+                    i += 1
             continue
         ws.write(i, j, '选项')
         ws.write(i, j+1, '数量')

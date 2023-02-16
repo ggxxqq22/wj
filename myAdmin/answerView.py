@@ -17,9 +17,9 @@ def opera(request):
     response={'code':0,'msg':'success'}
     if request.method=='POST':
         body=str(request.body,encoding='utf-8')
-        print(body)
+        # print(body)
         try:
-            info = json.loads(body)#解析json报文
+            info = json.loads(body)  # 解析json报文
         except:
             response['code'] = '-2'
             response['msg'] = '请求格式有误'
@@ -69,10 +69,17 @@ def getInfo(info,request):
                     temp['must'] = item.must
                     # 获取选项
                     temp['options'] = []
-                    if temp['type'] in ['radio', 'checkbox']:  # 如果是单选或者多选
+                    temp['npsValue'] = []
+                    temp['level'] = item.level
+                    temp['rankValue'] = []  # 接收排序
+                    if temp['type'] in ['radio', 'checkbox', 'nps', 'rank']:  # 如果是单选或者多选
                         optionItems = Options.objects.filter(questionId=item.id)
                         for optionItem in optionItems:
                             temp['options'].append({'title':optionItem.title,'id':optionItem.id})
+                            if(temp['type'] == 'nps'):
+                                temp['npsValue'].append('')
+                            elif temp['type'] == 'rank':
+                                temp['rankValue'].append({'id': optionItem.id, 'title': optionItem.title})
                     temp['radioValue'] = -1  # 接收单选框的值
                     temp['checkboxValue'] = []  # 接收多选框的值
                     temp['textValue'] = ''  # 接收输入框的值
@@ -178,14 +185,18 @@ def submitWj(info,request):
         #记录答案
         for item in detail:
             # print(item)
+
             if item['type']=='radio':#单选题
                 if item['id'] in musts and item['radioValue']==-1:#此必填选项未填 回滚
                     print('开始回滚')
                     transaction.savepoint_rollback(s1)
                     print('已回滚')
                     response['code'] = '-11'
-                    response['msg'] = '有必答题目未回答'
+                    response['msg'] = '有必答题目未回答' + str(item['id'])
                     break
+                if not item['radioValue']==-1:
+                    cnt = Question.objects.filter(id=item['id'])[0].cnt + 1
+                    Question.objects.filter(id=item['id']).update(cnt=cnt)
                 Answer.objects.create(
                     questionId=item['id'],
                     submitId=submitInfo.id,
@@ -193,14 +204,31 @@ def submitWj(info,request):
                     type=item['type'],
                     answer=item['radioValue']
                 )
+            elif item['type']=='rank':#排序题
+                ans = []
+                for ele in item['rankValue']:
+                    ans.append(ele['id'])
+                ans = ','.join([str(x) for x in ans])
+                cnt = Question.objects.filter(id=item['id'])[0].cnt + 1
+                Question.objects.filter(id=item['id']).update(cnt=cnt)
+                Answer.objects.create(
+                    questionId=item['id'],
+                    submitId=submitInfo.id,
+                    wjId=wjId,
+                    type=item['type'],
+                    rankAnswer=ans
+                )
             elif item['type']=='checkbox':#多选题
                 if item['id'] in musts and len(item['checkboxValue'])==0:#此必填选项未填 回滚
                     print('开始回滚')
                     transaction.savepoint_rollback(s1)
                     print('已回滚')
                     response['code'] = '-11'
-                    response['msg'] = '有必答题目未回答'
+                    response['msg'] = '有必答题目未回答' + str(item['id'])
                     break
+                if not len(item['checkboxValue'])==0:
+                    cnt = Question.objects.filter(id=item['id'])[0].cnt + 1
+                    Question.objects.filter(id=item['id']).update(cnt= cnt)
                 for value in item['checkboxValue']:
                     Answer.objects.create(
                         questionId=item['id'],
@@ -215,8 +243,11 @@ def submitWj(info,request):
                     transaction.savepoint_rollback(s1)
                     print('已回滚')
                     response['code'] = '-11'
-                    response['msg'] = '有必答题目未回答 '
+                    response['msg'] = '有必答题目未回答' + str(item['id'])
                     break
+                if not item['textValue']=='':
+                    cnt = Question.objects.filter(id=item['id'])[0].cnt + 1
+                    Question.objects.filter(id=item['id']).update(cnt=cnt)
                 Answer.objects.create(
                     questionId=item['id'],
                     submitId=submitInfo.id,
@@ -224,6 +255,26 @@ def submitWj(info,request):
                     type=item['type'],
                     answerText=item['textValue']
                 )
+            elif item['type']=='nps':
+                if item['id'] in musts and '' in item['npsValue']:
+                    print('开始回滚')
+                    transaction.savepoint_rollback(s1)
+                    print('已回滚')
+                    response['code'] = '-11'
+                    response['msg'] = '有必答题目未回答' + str(item['id'])
+                    break
+                if not '' in item['npsValue']:
+                    cnt = Question.objects.filter(id=item['id'])[0].cnt + 1
+                    Question.objects.filter(id=item['id']).update(cnt=cnt)
+                answerList = [str(x) for x in item['npsValue']]
+                Answer.objects.create(
+                    questionId=item['id'],
+                    submitId=submitInfo.id,
+                    wjId=wjId,
+                    type=item['type'],
+                    npsAnswer=''.join(answerList)
+                )
+
     else:
         response['code'] = '-3'
         response['msg'] = '确少必要参数'
