@@ -521,7 +521,7 @@ def resetpass(info):
 #最后更新：2019-05-28
 ############################################################
 def dataAnalysis(info):
-    response = {'code': 0, 'msg': 'success'}
+
     try:
         wjId=info.get('wjId')#获取问卷id
     except:
